@@ -27,9 +27,15 @@ class Settings(BaseSettings):
     # Mistral (opcional)
     mistral_api_key: Optional[str] = None
 
+    # Opcional: habilita APIs beta de Anthropic (ej: archivos)
+    anthropic_beta: Optional[str] = None
+
     # General
     log_level: str = "INFO"
     data_dir: str = "data"
+
+    # HTTP/S (para evitar fallos de SSL en entornos cerrados)
+    verify_ssl: bool = True
 
     # Tarea menu
     menu_source_url: str = (

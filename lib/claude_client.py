@@ -2,7 +2,9 @@
 Wrapper para Claude API + Files API.
 Gestiona la subida de ficheros y la extracción de contenido estructurado.
 """
+import json
 import logging
+import subprocess
 from pathlib import Path
 
 import httpx
@@ -14,60 +16,72 @@ logger = logging.getLogger(__name__)
 # Endpoint base de la API de Anthropic
 _BASE_URL = "https://api.anthropic.com"
 _API_VERSION = "2023-06-01"
-_FILES_BETA = "files-2025-04-14"
-_MODEL = "claude-sonnet-4-6"
+_FILES_BETA = "files-api-2025-04-14"
+#_MODEL = "claude-sonnet-4-6"
+_MODEL = "claude-haiku-4-5"  # Más rápido y barato, pero menos preciso (ideal para pruebas)
+
 
 
 class ClaudeClient:
     """Cliente para Claude API con soporte de Files API."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, anthropic_beta: str | None = None) -> None:
         self._api_key = api_key
         self._headers = {
             "x-api-key": api_key,
             "anthropic-version": _API_VERSION,
         }
+        if anthropic_beta:
+            self._headers["anthropic-beta"] = anthropic_beta
 
     def upload_file(self, file_path: Path, mime_type: str = "application/pdf") -> str:
         """
-        Sube un fichero a la Files API de Claude.
+        Sube un fichero a la Files API de Claude usando curl.
         Devuelve el file_id para usarlo en posteriores llamadas.
         """
         logger.info("Subiendo fichero a Claude Files API: %s", file_path)
 
-        headers = {
-            **self._headers,
-            "anthropic-beta": _FILES_BETA,
-        }
+        # File upload uses multipart/form-data — curl sets Content-Type with boundary automatically.
+        # Do NOT include Content-Type header here; it must not be set to application/json.
+        cmd = [
+            "curl", "-s", "-X", "POST",
+            f"{_BASE_URL}/v1/files",
+            "-H", f"x-api-key: {self._api_key}",
+            "-H", f"anthropic-version: {_API_VERSION}",
+            "-H", f"anthropic-beta: {_FILES_BETA}",
+            "-F", f"file=@{file_path};type={mime_type}",
+        ]
 
         try:
-            with open(file_path, "rb") as f:
-                file_content = f.read()
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired as e:
+            raise ClaudeAPIError("Timeout al subir fichero con curl") from e
+        except FileNotFoundError as e:
+            raise ClaudeAPIError("curl no encontrado en el sistema") from e
 
-            with httpx.Client(timeout=60.0) as client:
-                response = client.post(
-                    f"{_BASE_URL}/v1/files",
-                    headers=headers,
-                    files={"file": (file_path.name, file_content, mime_type)},
-                )
+        if result.returncode != 0:
+            raise ClaudeAPIError(
+                f"curl falló (código {result.returncode}): {result.stderr}"
+            )
 
-            if response.status_code != 200:
-                raise ClaudeAPIError(
-                    f"Error subiendo fichero: HTTP {response.status_code} — {response.text}"
-                )
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            raise ClaudeAPIError(
+                f"Respuesta no válida de Files API: {result.stdout!r}"
+            ) from e
 
-            data = response.json()
-            file_id = data.get("id")
-            if not file_id:
-                raise ClaudeAPIError(
-                    f"Respuesta inesperada de Files API (sin 'id'): {data}"
-                )
+        if "error" in data:
+            raise ClaudeAPIError(f"Error de Files API: {data['error']}")
 
-            logger.info("Fichero subido con éxito. file_id=%s", file_id)
-            return file_id
+        file_id = data.get("id")
+        if not file_id:
+            raise ClaudeAPIError(
+                f"Respuesta inesperada de Files API (sin 'id'): {data}"
+            )
 
-        except httpx.HTTPError as e:
-            raise ClaudeAPIError(f"Error HTTP al subir fichero: {e}") from e
+        logger.info("Fichero subido con éxito. file_id=%s", file_id)
+        return file_id
 
     def extract_from_file(self, file_id: str, prompt: str) -> str:
         """
@@ -84,7 +98,7 @@ class ClaudeClient:
 
         payload = {
             "model": _MODEL,
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "messages": [
                 {
                     "role": "user",

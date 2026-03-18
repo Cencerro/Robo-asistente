@@ -82,7 +82,7 @@ class TestWriteJson:
 class TestMenuPath:
     def test_returns_correct_path(self):
         path = menu_path("data", 2026, 3)
-        assert str(path) == "data/menus/menu_2026_03.json"
+        assert path.as_posix() == "data/menus/menu_2026_03.json"
 
     def test_zero_pads_month(self):
         path = menu_path("data", 2026, 1)

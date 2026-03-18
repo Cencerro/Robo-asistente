@@ -59,7 +59,10 @@ def run() -> None:
             logger.info("URL del PDF actualizada: %s", pdf_url)
 
         # Extraer menús con Claude
-        claude_client = ClaudeClient(settings.anthropic_api_key)
+        claude_client = ClaudeClient(
+        settings.anthropic_api_key,
+        anthropic_beta=settings.anthropic_beta,
+    )
         menu_data = extract_menus(
             pdf_url=pdf_url,
             menu_data=menu_data,

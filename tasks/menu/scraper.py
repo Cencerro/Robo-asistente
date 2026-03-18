@@ -10,6 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from lib.config import get_settings
 from lib.exceptions import ScrapingError
 
 logger = logging.getLogger(__name__)
@@ -30,11 +31,13 @@ _PDF_PATTERN = re.compile(r"menu|repas|restauration", re.IGNORECASE)
 def _fetch_page(url: str) -> str:
     """Descarga el HTML de la página con reintentos."""
     logger.debug("GET %s", url)
+    settings = get_settings()
     try:
         with httpx.Client(
-            timeout=httpx.Timeout(connect=_CONNECT_TIMEOUT, read=_READ_TIMEOUT),
+            timeout=httpx.Timeout(_READ_TIMEOUT, connect=_CONNECT_TIMEOUT),
             follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; robo-assistente/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; robo-asistente/1.0)"},
+            verify=settings.verify_ssl,
         ) as client:
             response = client.get(url)
             response.raise_for_status()
@@ -56,7 +59,7 @@ def find_pdf_url(source_url: str) -> str:
     logger.info("Buscando PDF de menú en: %s", source_url)
 
     html = _fetch_page(source_url)
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
 
     # Buscar todos los enlaces a PDF
     pdf_links = []
@@ -70,19 +73,21 @@ def find_pdf_url(source_url: str) -> str:
 
     logger.debug("PDFs encontrados: %d", len(pdf_links))
 
-    # Preferir PDFs que mencionen "menu", "repas" o "restauration"
-    for a, href in pdf_links:
+    # Preferir PDFs que mencionen "menu", "repas" o "restauration".
+    # Si hay varios, elegir el más reciente (asumimos que el HTML ordena cronológicamente).
+    for a, href in reversed(pdf_links):
         text = (a.get_text() + href).lower()
         if _PDF_PATTERN.search(text):
             pdf_url = urljoin(source_url, href)
             logger.info("PDF de menú encontrado: %s", pdf_url)
             return pdf_url
 
-    # Si ninguno coincide con el patrón, usar el primero
-    _, href = pdf_links[0]
+    # Si ninguno coincide con el patrón, usar el último (el más reciente)
+    _, href = pdf_links[-1]
     pdf_url = urljoin(source_url, href)
     logger.warning(
-        "Ningún PDF coincide con patrón de menú, usando el primero: %s", pdf_url
+        "Ningún PDF coincide con patrón de menú, usando el más reciente: %s",
+        pdf_url,
     )
     return pdf_url
 
@@ -103,9 +108,11 @@ def download_pdf(pdf_url: str, dest_path: "Path") -> None:  # noqa: F821
 
     logger.info("Descargando PDF: %s → %s", pdf_url, dest_path)
     try:
+        settings = get_settings()
         with httpx.Client(
-            timeout=httpx.Timeout(connect=_CONNECT_TIMEOUT, read=60.0),
+            timeout=httpx.Timeout(60.0, connect=_CONNECT_TIMEOUT),
             follow_redirects=True,
+            verify=settings.verify_ssl,
         ) as client:
             with client.stream("GET", pdf_url) as response:
                 response.raise_for_status()
