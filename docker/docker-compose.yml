@@ -1,0 +1,11 @@
+services:
+  automata:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file: ../.env
+    volumes:
+      # Bind mount completo: editas en Windows, ejecuta en contenedor
+      - ..:/app
+    # Sobrescribir CMD para ejecutar una tarea específica
+    command: python automata.py menu

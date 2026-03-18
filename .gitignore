@@ -1,0 +1,48 @@
+# Secretos (excluir .env.example que sí debe estar en el repo)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+*.dylib
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Datos generados (no versionar PDFs ni JSONs de datos)
+data/
+
+# Logs
+logs/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
