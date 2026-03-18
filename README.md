@@ -50,6 +50,56 @@ robo-assistente/
     └── test_storage.py
 ```
 
+## Uso
+
+### Requisitos previos
+
+```bash
+cp .env.example .env   # rellenar con los valores reales
+```
+
+### Desarrollo (local con Docker)
+
+```bash
+# Construir imagen
+docker compose -f docker/docker-compose.yml build
+
+# Ejecutar una tarea
+docker compose -f docker/docker-compose.yml run automata python automata.py menu
+```
+
+El bind mount monta el directorio local en `/app`, por lo que los cambios en el código se reflejan sin reconstruir la imagen.
+
+### Producción (Docker)
+
+```bash
+# Primera vez — construir imagen
+docker compose -f docker/docker-compose.prod.yml build
+
+# Lanzar manualmente
+docker compose -f docker/docker-compose.prod.yml run --rm automata python automata.py menu
+```
+
+`data/` y `logs/` persisten en volúmenes Docker entre ejecuciones.
+
+**Cron en el servidor host:**
+```cron
+# Menú escolar — lunes a viernes a las 11:00
+0 11 * * 1-5 cd /opt/robo-asistente && docker compose -f docker/docker-compose.prod.yml run --rm automata python automata.py menu
+```
+
+### Tests
+
+```bash
+# Instalar dependencias de desarrollo
+pip install -r requirements-dev.txt
+
+# Ejecutar tests
+pytest
+```
+
+---
+
 ### Flujo de la tarea `menu`
 
 ```
@@ -130,38 +180,48 @@ RoboAssistenteError
 └── StorageError
 ```
 
-## Configuración
+## Próximas funcionalidades
 
-Copiar `.env.example` a `.env` y completar las variables:
+### Arquitectura long-running con bot interactivo
 
-```bash
-cp .env.example .env
+El sistema evolucionará de contenedor efímero (cron) a un **contenedor long-running** con dos componentes internos:
+
+- **APScheduler** — gestiona las tareas programadas (reemplaza el cron del host)
+- **Telegram polling** — escucha mensajes y comandos de los usuarios en tiempo real
+
+```
+contenedor long-running
+├── APScheduler → ejecuta tareas según agenda interna
+└── Telegram bot → escucha comandos y responde
 ```
 
-Variables requeridas:
+### Interacción en lenguaje natural vía Mistral
+
+El bot aceptará peticiones en lenguaje natural. El flujo será:
+
+```
+usuario → "¿Qué hay de comer el jueves?"
+    │
+    ▼
+Telegram bot recibe el mensaje
+    │
+    ▼
+Mistral recibe: mensaje del usuario + catálogo de acciones disponibles del automata
+    │
+    ▼
+Mistral devuelve: acción estructurada { "task": "menu", "date": "2026-03-19" }
+    │
+    ▼
+automata ejecuta la acción y responde por Telegram
+```
+
+Mistral actúa como capa de interpretación: transforma lenguaje libre en llamadas concretas al automata, sin lógica de parsing en el código. Añadir nuevas capacidades al bot solo requiere registrar la acción en el catálogo que se le pasa a Mistral.
+
+---
+
+## Configuración
+
+Variables requeridas en `.env`:
 - `ANTHROPIC_API_KEY`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
-
-## Ejecución
-
-### Desarrollo (Docker en Windows)
-```bash
-docker compose -f docker/docker-compose.yml run --rm automata
-```
-
-### Producción (Debian con crontab)
-```bash
-python automata.py menu
-```
-
-### Tests
-```bash
-pytest -m "not integration"
-```
-
-## Crontab (producción)
-```cron
-# Menú escolar — lunes a viernes a las 8:00
-0 8 * * 1-5 /usr/bin/python3 /opt/robo-assistente/automata.py menu >> /dev/null 2>&1
-```

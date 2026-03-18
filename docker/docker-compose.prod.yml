@@ -5,5 +5,9 @@ services:
       dockerfile: docker/Dockerfile
     env_file: ../.env
     volumes:
-      # Bind mount para desarrollo: editas en Windows, ejecuta en contenedor
-      - ..:/app
+      - automata_data:/app/data
+      - automata_logs:/app/logs
+
+volumes:
+  automata_data:
+  automata_logs:
