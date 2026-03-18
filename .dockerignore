@@ -1,0 +1,11 @@
+.venv/
+tests/
+pytest.ini
+.env
+__pycache__/
+*.pyc
+*.pyo
+.git/
+logs/
+data/
+response.json
