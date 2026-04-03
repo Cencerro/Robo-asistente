@@ -9,7 +9,7 @@ from lib.claude_client import ClaudeClient
 from lib.config import get_settings
 from lib.storage import menu_path, read_json, write_json
 from lib.telegram_client import TelegramClient
-from tasks.menu.extractor import extract_menus, get_today_menu
+from tasks.menu.extractor import extract_menus, get_today_menu, split_days_by_month
 from tasks.menu.scraper import find_pdf_url
 from tasks.menu.sender import send_menu, send_no_menu
 
@@ -72,11 +72,51 @@ def run() -> None:
         )
 
         # Registrar timestamp de la extracción
-        menu_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        menu_data["fetched_at"] = fetched_at
 
-        # Guardar JSON actualizado
+        # Separar días por mes (el PDF puede incluir días de meses distintos)
+        current_month_key = today.strftime("%Y-%m")
+        days_by_month = split_days_by_month(menu_data.get("days", {}))
+
+        # Guardar sólo los días del mes actual en el fichero principal
+        menu_data["days"] = days_by_month.get(current_month_key, {})
         write_json(json_path, menu_data)
         logger.info("JSON de menús guardado en %s", json_path)
+
+        # Guardar días de otros meses (p.ej. el mes siguiente)
+        for month_key, month_days in days_by_month.items():
+            if month_key == current_month_key:
+                continue
+
+            year_m, month_m = map(int, month_key.split("-"))
+            other_path = menu_path(settings.data_dir, year_m, month_m)
+
+            # Si los días no empiezan en el día 1 y ya existe fichero → merge
+            first_day_num = int(min(month_days.keys()).split("-")[2])
+            if first_day_num > 1 and other_path.exists():
+                other_data = read_json(other_path)
+                existing_days = other_data.get("days", {})
+                existing_days.update(month_days)
+                other_data["days"] = existing_days
+                logger.info(
+                    "Mezclando %d días de %s en fichero existente %s",
+                    len(month_days), month_key, other_path,
+                )
+            else:
+                other_data = {
+                    "period": month_key,
+                    "source_url": pdf_url,
+                    "claude_file_id": None,
+                    "fetched_at": fetched_at,
+                    "days": month_days,
+                }
+                logger.info(
+                    "Creando fichero para %s con %d días en %s",
+                    month_key, len(month_days), other_path,
+                )
+
+            write_json(other_path, other_data)
 
         # Obtener menú de hoy del JSON recién extraído
         today_menu = get_today_menu(menu_data, today)

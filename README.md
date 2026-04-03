@@ -82,6 +82,11 @@ docker compose -f docker/docker-compose.prod.yml run --rm automata python automa
 
 `data/` y `logs/` persisten en volúmenes Docker entre ejecuciones.
 
+**Actualizar a una nueva versión:**
+```bash
+git pull && docker compose -f docker/docker-compose.prod.yml build
+```
+
 **Cron en el servidor host:**
 ```cron
 # Menú escolar — lunes a viernes a las 11:00

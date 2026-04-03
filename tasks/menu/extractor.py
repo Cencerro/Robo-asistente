@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Prompt de extracción: instruye a Claude para devolver JSON estructurado
 _EXTRACTION_PROMPT = """
-Ce document est le menu mensuel de la restauration scolaire.
+Ce document est le menu mensuel de la restauration scolaire. Les jours sont divisés en 5 colonnes, et pas tous les jours il y a le même nombre de plats.
 Extrais tous les menus jour par jour et renvoie UNIQUEMENT un objet JSON valide
 (sans markdown, sans explication, sans texte avant ou après).
 
@@ -111,6 +111,18 @@ def _parse_menu_json(raw: str) -> dict[str, Any]:
         f"No se pudo parsear JSON de la respuesta de Claude. "
         f"Primeros 200 chars: {raw[:200]}"
     )
+
+
+def split_days_by_month(days: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """
+    Agrupa los días extraídos por mes.
+    Devuelve {YYYY-MM: {YYYY-MM-DD: menu, ...}, ...}
+    """
+    by_month: dict[str, dict[str, Any]] = {}
+    for date_str, menu in days.items():
+        month_key = date_str[:7]  # YYYY-MM
+        by_month.setdefault(month_key, {})[date_str] = menu
+    return by_month
 
 
 def get_today_menu(menu_data: dict[str, Any], today: date | None = None) -> dict[str, Any] | None:
